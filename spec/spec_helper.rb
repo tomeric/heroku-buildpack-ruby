@@ -38,3 +38,20 @@ def successful_body(app, options = {})
   retry_limit = options[:retry_limit] || 50
   Excon.get("http://#{app.name}.herokuapp.com", :idempotent => true, :expects => 200, :retry_limit => retry_limit).body
 end
+
+
+def git_branch
+  `git describe --contains --all HEAD`.strip
+end
+
+module Hatchet
+  DEPLOY_STRATEGY = (ENV['HATCHET_DEPLOY_STRATEGY'] || :anvil).to_sym
+end
+
+case Hatchet::DEPLOY_STRATEGY
+when :anvil
+  Hatchet::Runner = Hatchet::AnvilApp
+when :git
+  Hatchet::GitApp::BUILDPACK_URL = "https://github.com/heroku/heroku-buildpack-ruby.git#" + git_branch
+  Hatchet::Runner = Hatchet::GitApp
+end

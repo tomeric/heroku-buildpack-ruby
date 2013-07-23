@@ -13,6 +13,8 @@ class LanguagePack::Ruby < LanguagePack::Base
   BUILDPACK_VERSION    = "v70"
   LIBYAML_VERSION      = "0.1.4"
   LIBYAML_PATH         = "libyaml-#{LIBYAML_VERSION}"
+  TAGLIB_VERSION       = "1.8"
+  TAGLIB_PATH          = "taglib-#{TAGLIB_VERSION}"
   BUNDLER_VERSION      = "1.3.2"
   BUNDLER_GEM_PATH     = "bundler-#{BUNDLER_VERSION}"
   NODE_VERSION         = "0.4.7"
@@ -20,6 +22,7 @@ class LanguagePack::Ruby < LanguagePack::Base
   JVM_BASE_URL         = "http://heroku-jdk.s3.amazonaws.com"
   JVM_VERSION          = "openjdk7-latest"
   DEFAULT_RUBY_VERSION = "ruby-2.0.0"
+  MY_VENDOR_URL        = "https://s3.amazonaws.com/menan/heroku-buildpack-ruby"
 
   # detects if this is a valid Ruby app
   # @return [Boolean] true if it's a Ruby app
@@ -430,6 +433,15 @@ WARNING
     end
   end
 
+  # install taglib into the LP to be referenced for psych compilation
+  # @param [String] tmpdir to store the taglib files
+  def install_taglib(dir)
+    FileUtils.mkdir_p dir
+    Dir.chdir(dir) do |dir|
+      run("curl #{MY_VENDOR_URL}/#{TAGLIB_PATH}.tgz -s -o - | tar xzf -")
+    end
+  end
+
   # remove `vendor/bundle` that comes from the git repo
   # in case there are native ext.
   # users should be using `bundle pack` instead.
@@ -483,20 +495,25 @@ WARNING
         load_bundler_cache
 
         bundler_output = ""
-        Dir.mktmpdir("libyaml-") do |tmpdir|
+        Dir.mktmpdir("libyaml-taglib-") do |tmpdir|
           libyaml_dir = "#{tmpdir}/#{LIBYAML_PATH}"
+          taglib_dir  = "#{tmpdir}/#{TAGLIB_PATH}"
+
           install_libyaml(libyaml_dir)
+          install_taglib(taglib_dir)
 
           # need to setup compile environment for the psych gem
           yaml_include   = File.expand_path("#{libyaml_dir}/include")
           yaml_lib       = File.expand_path("#{libyaml_dir}/lib")
+          taglib_include = File.expand_path("#{taglib_dir}/include")
+          taglib_lib     = File.expand_path("#{taglib_dir}/lib")
           pwd            = run("pwd").chomp
           bundler_path   = "#{pwd}/#{slug_vendor_base}/gems/#{BUNDLER_GEM_PATH}/lib"
           # we need to set BUNDLE_CONFIG and BUNDLE_GEMFILE for
           # codon since it uses bundler.
-          env_vars       = "env BUNDLE_GEMFILE=#{pwd}/Gemfile BUNDLE_CONFIG=#{pwd}/.bundle/config CPATH=#{yaml_include}:$CPATH CPPATH=#{yaml_include}:$CPPATH LIBRARY_PATH=#{yaml_lib}:$LIBRARY_PATH RUBYOPT=\"#{syck_hack}\""
-          env_vars      += " BUNDLER_LIB_PATH=#{bundler_path}" if ruby_version && ruby_version.match(/^ruby-1\.8\.7/)
-          puts "Running: #{bundle_command}"
+          env_vars       = "env BUNDLE_GEMFILE=#{pwd}/Gemfile BUNDLE_CONFIG=#{pwd}/.bundle/config CPATH=#{yaml_include}:#{taglib_include}:$CPATH CPPATH=#{yaml_include}:#{taglib_include}:$CPPATH LIBRARY_PATH=#{yaml_lib}:#{taglib_lib}:$LIBRARY_PATH LD_LIBRARY_PATH=#{yaml_lib}:#{taglib_lib}:$LD_LIBRARY_PATH RUBYOPT=\"#{syck_hack}\""
+          env_vars      += " BUNDLER_LIB_PATH=#{bundler_path}" if ruby_version == "ruby-1.8.7"
+          puts "Running: #{env_vars} #{bundle_command} --no-clean 2>&1"
           instrument "ruby.bundle_install" do
             bundler_output << pipe("#{env_vars} #{bundle_command} --no-clean 2>&1")
           end

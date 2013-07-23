@@ -81,14 +81,14 @@ WARNING
 
             puts "Running: rake assets:precompile"
             require 'benchmark'
-            time = Benchmark.realtime { pipe("env PATH=$PATH:bin bundle exec rake assets:precompile 2>&1 > /dev/null") }
+            time = Benchmark.realtime { pipe("env LD_LIBRARY_PATH=vendor/taglib/lib:$LD_LIBRARY_PATH PATH=$PATH:bin bundle exec rake assets:precompile 2>&1 > /dev/null") }
 
             if $?.success?
               log "assets_precompile", :status => "success"
               puts "Asset precompilation completed (#{"%.2f" % time}s)"
 
               puts "Cleaning assets"
-              pipe "env PATH=$PATH:bin bundle exec rake assets:clean 2>& 1"
+              pipe "env LD_LIBRARY_PATH=vendor/taglib/lib:$LD_LIBRARY_PATH PATH=$PATH:bin bundle exec rake assets:clean 2>& 1"
 
               @cache.store public_assets_folder
             else
